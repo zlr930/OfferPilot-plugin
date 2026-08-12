@@ -1,0 +1,21 @@
+{
+  "name": "offerpilot",
+  "version": "0.3.5",
+  "private": true,
+  "type": "module",
+  "description": "OfferPilot client-side AI resume assistant Chrome extension",
+  "scripts": {
+    "test": "node --test",
+    "check": "node scripts/check-project.mjs",
+    "sync:vendor": "node scripts/sync-vendor.mjs",
+    "build:extension": "node scripts/sync-vendor.mjs && node scripts/package-extension.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1",
+    "mammoth": "^1.12.1",
+    "pdfjs-dist": "^6.2.108"
+  }
+}

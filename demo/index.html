@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>网申表单测试页</title>
+    <style>
+      :root {
+        color: #17212b;
+        background: #eef1f3;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+        letter-spacing: 0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      main {
+        width: min(760px, calc(100% - 32px));
+        margin: 40px auto 80px;
+      }
+      header {
+        padding-bottom: 24px;
+        border-bottom: 1px solid #cfd6dc;
+      }
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      header p {
+        margin-top: 6px;
+        color: #687684;
+        font-size: 13px;
+      }
+      fieldset {
+        margin: 0;
+        padding: 24px 0;
+        border: 0;
+        border-bottom: 1px solid #cfd6dc;
+      }
+      legend {
+        padding: 0 0 18px;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .form-item {
+        min-width: 0;
+      }
+      .form-item-wide {
+        grid-column: 1 / -1;
+      }
+      label,
+      .group-label {
+        display: block;
+        margin-bottom: 7px;
+        color: #40505e;
+        font-size: 13px;
+        font-weight: 650;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid #b8c2cb;
+        border-radius: 5px;
+        background: #fff;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      .radio-row {
+        display: flex;
+        min-height: 40px;
+        align-items: center;
+        gap: 18px;
+      }
+      .radio-row label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-weight: 400;
+      }
+      .radio-row input {
+        width: 16px;
+        min-height: 16px;
+      }
+      footer {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 24px;
+      }
+      button {
+        min-height: 40px;
+        border: 0;
+        border-radius: 5px;
+        background: #176e4d;
+        color: white;
+        padding: 0 18px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #result {
+        flex: 1;
+        align-self: center;
+        color: #176e4d;
+        font-size: 13px;
+      }
+      @media (max-width: 600px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .form-item-wide {
+          grid-column: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>产品运营培训生申请</h1>
+        <p>OfferPilot 本地兼容性测试表单</p>
+      </header>
+      <form id="applicationForm">
+        <fieldset>
+          <legend>基本信息</legend>
+          <div class="grid">
+            <div class="form-item">
+              <label for="name">姓名</label>
+              <input id="name" name="name" autocomplete="name" required />
+            </div>
+            <div class="form-item">
+              <label for="email">邮箱</label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                required
+              />
+            </div>
+            <div class="form-item">
+              <label for="phone">手机号码</label>
+              <input id="phone" name="phone" type="tel" autocomplete="tel" />
+            </div>
+            <div class="form-item">
+              <span class="group-label">性别</span>
+              <div class="radio-row">
+                <label
+                  ><input type="radio" name="gender" value="male" /> 男</label
+                >
+                <label
+                  ><input type="radio" name="gender" value="female" /> 女</label
+                >
+                <label
+                  ><input type="radio" name="gender" value="undisclosed" />
+                  不透露</label
+                >
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>教育经历</legend>
+          <div class="grid">
+            <div class="form-item">
+              <label for="school">毕业院校</label>
+              <input id="school" name="school" />
+            </div>
+            <div class="form-item">
+              <label for="major">专业</label>
+              <input id="major" name="major" />
+            </div>
+            <div class="form-item">
+              <label for="degree">最高学历</label>
+              <select id="degree" name="degree">
+                <option value="">请选择</option>
+                <option value="bachelor">本科</option>
+                <option value="master">硕士</option>
+                <option value="doctor">博士</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label for="graduation">毕业日期</label>
+              <input id="graduation" name="graduation" type="month" />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>求职信息</legend>
+          <div class="grid">
+            <div class="form-item">
+              <label for="city">期望城市</label>
+              <select id="city" name="city">
+                <option value="">请选择</option>
+                <option value="beijing">北京</option>
+                <option value="shanghai">上海</option>
+                <option value="shenzhen">深圳</option>
+                <option value="hangzhou">杭州</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label for="availableDate">可到岗日期</label>
+              <input id="availableDate" name="availableDate" type="date" />
+            </div>
+            <div class="form-item form-item-wide">
+              <label for="summary">个人优势</label>
+              <textarea id="summary" name="summary"></textarea>
+            </div>
+          </div>
+        </fieldset>
+
+        <footer>
+          <span id="result"></span>
+          <button type="submit">提交测试</button>
+        </footer>
+      </form>
+    </main>
+    <script>
+      document
+        .querySelector("#applicationForm")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          document.querySelector("#result").textContent =
+            "测试表单已校验，未发送任何数据";
+        });
+    </script>
+  </body>
+</html>

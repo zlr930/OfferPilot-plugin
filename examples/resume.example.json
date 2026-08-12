@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "basic": {
+    "fullName": "张三",
+    "phone": "13800000000",
+    "email": "zhangsan@example.com",
+    "currentCity": "上海",
+    "hometown": "杭州",
+    "nationality": "中国"
+  },
+  "preferences": {
+    "targetRoles": "产品经理, 数据分析",
+    "targetCities": "上海, 杭州",
+    "employmentType": "校园招聘",
+    "earliestStartDate": "2026-07-01",
+    "willingToRelocate": "是"
+  },
+  "education": [
+    {
+      "school": "示例大学",
+      "college": "管理学院",
+      "major": "信息管理与信息系统",
+      "degree": "本科",
+      "educationType": "全日制",
+      "startDate": "2022-09",
+      "endDate": "2026-06",
+      "gpa": "3.7/4.0",
+      "rank": "前 10%",
+      "courses": "数据结构、数据库原理、统计学、管理信息系统"
+    }
+  ],
+  "internships": [
+    {
+      "company": "示例科技有限公司",
+      "department": "商业产品部",
+      "role": "产品实习生",
+      "city": "上海",
+      "startDate": "2025-06",
+      "endDate": "2025-09",
+      "description": "参与需求调研、方案设计和上线验收，协同研发与运营推进迭代。",
+      "achievements": "完成 3 项功能迭代，整理用户反馈并建立周度问题看板。"
+    }
+  ],
+  "projects": [
+    {
+      "name": "校园活动数据看板",
+      "role": "项目负责人",
+      "startDate": "2024-10",
+      "endDate": "2025-01",
+      "stack": "SQL, Python, Tableau",
+      "description": "负责指标定义、数据清洗、看板设计和项目进度管理。",
+      "achievements": "覆盖 8 类活动指标，支持活动复盘和资源安排。"
+    }
+  ],
+  "campus": [
+    {
+      "organization": "校学生会",
+      "role": "活动部干事",
+      "startDate": "2023-09",
+      "endDate": "2024-06",
+      "description": "负责活动方案、供应商沟通与现场执行。",
+      "achievements": "参与组织 5 场校级活动。"
+    }
+  ],
+  "awards": [
+    {
+      "name": "校级一等奖学金",
+      "level": "校级",
+      "issuer": "示例大学",
+      "date": "2025-10"
+    }
+  ],
+  "skills": {
+    "technical": "SQL, Python, Excel, Tableau, Figma",
+    "languages": "英语 CET-6 560",
+    "certificates": "计算机二级"
+  },
+  "selfEvaluation": "具备数据分析、用户研究和跨团队项目协作经验，能够将业务问题拆解为可执行方案。"
+}

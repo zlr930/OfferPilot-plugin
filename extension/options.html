@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>个人档案 · OfferPilot</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">OP</div>
+          <div>
+            <strong>OfferPilot</strong>
+            <span>个人档案</span>
+          </div>
+        </div>
+
+        <div class="completion" aria-live="polite">
+          <div class="completion-row">
+            <span>档案完整度</span>
+            <strong id="completionValue">0%</strong>
+          </div>
+          <div class="completion-track" aria-hidden="true">
+            <span id="completionBar"></span>
+          </div>
+          <small id="completionMeta">已完成 0/11 项</small>
+        </div>
+
+        <nav id="sectionNav" class="section-nav" aria-label="档案栏目"></nav>
+
+        <div class="privacy-note">
+          数据保存在当前浏览器中，仅在解析简历或分析投递页时发送必要文字给 OpenAI。
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>我的个人档案</h1>
+            <p>Agent 将从已填写的事实中匹配网申字段，不会编造缺失信息。</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="parseResumeButton" class="button button-primary" type="button">
+              解析简历
+            </button>
+            <button id="importButton" class="button" type="button">导入</button>
+            <button id="exportButton" class="button" type="button">导出</button>
+            <input id="fileInput" type="file" accept=".json,.txt,.md" hidden />
+            <input
+              id="resumeFileInput"
+              type="file"
+              accept=".pdf,.docx,.html,.htm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/html"
+              hidden
+            />
+          </div>
+        </header>
+
+        <div id="migrationNotice" class="notice" hidden></div>
+        <form id="profileForm" novalidate></form>
+
+        <footer class="savebar">
+          <span id="saveMessage" class="save-message">所有修改均保存在本地</span>
+          <button id="saveButton" class="button button-primary" type="button">
+            保存档案
+          </button>
+        </footer>
+      </main>
+    </div>
+
+    <dialog id="resumeParseDialog" class="resume-dialog">
+      <div class="resume-dialog-heading">
+        <div>
+          <h2>简历解析结果</h2>
+          <p id="resumeParseSummary"></p>
+        </div>
+        <button
+          id="closeResumeDialogButton"
+          class="remove-button"
+          type="button"
+          aria-label="关闭解析结果"
+          title="关闭"
+        >
+          ×
+        </button>
+      </div>
+      <div id="resumeParseMeta" class="resume-parse-meta"></div>
+      <div id="resumeParsePreview" class="resume-parse-preview"></div>
+      <div id="resumeParseWarnings" class="resume-parse-warnings" hidden></div>
+      <div class="resume-dialog-actions">
+        <button id="cancelResumeButton" class="button" type="button">取消</button>
+        <button id="applyResumeButton" class="button button-primary" type="button">
+          合并到档案
+        </button>
+      </div>
+    </dialog>
+
+    <template id="connectionTemplate">
+      <section class="form-section" data-section="connection">
+        <div class="section-heading">
+          <div>
+            <h2>AI Agent</h2>
+            <p>支持 OpenAI Responses 兼容服务；API 配置仅保存在当前浏览器的扩展存储中。</p>
+          </div>
+          <span id="connectionBadge" class="status-badge">未检测</span>
+        </div>
+        <div class="field-grid agent-settings-grid">
+          <label class="field field-span-2">
+            <span>Agent API Key</span>
+            <input
+              id="openaiApiKey"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="sk-..."
+            />
+          </label>
+          <label class="key-visibility-control">
+            <input id="showApiKey" type="checkbox" />
+            <span>显示密钥</span>
+          </label>
+          <label class="field field-span-2">
+            <span>API Base URL</span>
+            <input
+              id="openaiBaseUrl"
+              type="url"
+              spellcheck="false"
+              placeholder="https://api.ai.tosky.top/v1"
+            />
+          </label>
+          <button id="testButton" class="button action-button" type="button">
+            检测连接
+          </button>
+          <label class="field">
+            <span>模型</span>
+            <input id="openaiModel" type="text" spellcheck="false" />
+          </label>
+          <label class="field">
+            <span>推理强度</span>
+            <select id="reasoningEffort">
+              <option value="none">none</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
+            </select>
+          </label>
+        </div>
+        <div id="connectionMessage" class="field-message"></div>
+      </section>
+    </template>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

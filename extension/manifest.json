@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "OfferPilot",
+  "version": "0.3.5",
+  "description": "使用 AI Agent 将结构化个人档案安全匹配到招聘表单，并在确认后填写。",
+  "action": {
+    "default_title": "打开 OfferPilot"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "https://api.ai.tosky.top/*",
+    "https://api.openai.com/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["content.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
