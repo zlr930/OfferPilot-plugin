@@ -1,4 +1,4 @@
-# OfferPilot
+# OfferPilot Plugin
 
 OfferPilot 是一个纯前端 Chrome 网申辅助扩展。它可以解析 PDF、DOCX、HTML 简历，生成结构化个人档案，再使用 OpenAI Responses API 将档案事实匹配到招聘表单，供用户确认后填写。
 
@@ -40,7 +40,7 @@ npm run build:extension
 
 然后在 Chrome 打开 `chrome://extensions/`，开启“开发者模式”，点击“加载已解压的扩展程序”，选择本项目的 `extension` 目录。
 
-打包文件位于 [offerpilot.zip](dist/offerpilot.zip)。Chrome 开发模式应加载解压目录，而不是直接选择 ZIP。
+打包文件位于 [offerpilot-plugin.zip](dist/offerpilot-plugin.zip)。Chrome 开发模式应加载解压目录，而不是直接选择 ZIP。
 
 ## 配置
 
@@ -82,7 +82,7 @@ npm run sync:vendor
 npm run build:extension
 ```
 
-`build:extension` 会先从锁定的 npm 依赖同步 PDF.js 和 Mammoth 浏览器文件，再生成 `dist/offerpilot.zip`。
+`build:extension` 会先从锁定的 npm 依赖同步 PDF.js 和 Mammoth 浏览器文件，再生成 `dist/offerpilot-plugin.zip`。
 
 ## 官方 API 依据
 

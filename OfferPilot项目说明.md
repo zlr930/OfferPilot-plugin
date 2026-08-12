@@ -1,4 +1,4 @@
-# OfferPilot 项目说明
+# OfferPilot Plugin 项目说明
 
 ## 项目定位
 

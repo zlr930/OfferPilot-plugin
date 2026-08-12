@@ -1,9 +1,13 @@
 {
-  "name": "offerpilot",
+  "name": "offerpilot-plugin",
   "version": "0.3.5",
   "private": true,
   "type": "module",
   "description": "OfferPilot client-side AI resume assistant Chrome extension",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zlr930/OfferPilot-plugin.git"
+  },
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check-project.mjs",

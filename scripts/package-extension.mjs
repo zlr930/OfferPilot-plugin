@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const distDirectory = path.join(root, "dist");
-const output = path.join(distDirectory, "offerpilot.zip");
+const output = path.join(distDirectory, "offerpilot-plugin.zip");
 
 await mkdir(distDirectory, { recursive: true });
 await rm(output, { force: true });
