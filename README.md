@@ -4,6 +4,8 @@ OfferPilot 是一个纯前端 Chrome 网申辅助扩展。它可以解析 PDF、
 
 详细说明见：[插件介绍与使用指南](使用指南.md)。
 
+![OfferPilot 个人档案界面](docs/images/offerpilot-profile-desktop.png)
+
 ## 核心能力
 
 - PDF、DOCX、HTML/HTM 简历在浏览器内提取文字，不上传原始文件。
@@ -40,7 +42,7 @@ npm run build:extension
 
 然后在 Chrome 打开 `chrome://extensions/`，开启“开发者模式”，点击“加载已解压的扩展程序”，选择本项目的 `extension` 目录。
 
-打包文件位于 [offerpilot-plugin.zip](dist/offerpilot-plugin.zip)。Chrome 开发模式应加载解压目录，而不是直接选择 ZIP。
+`npm run build:extension` 会在本地生成 `dist/offerpilot-plugin.zip`。Chrome 开发模式应加载 `extension` 目录，而不是直接选择 ZIP。
 
 ## 配置
 
@@ -70,7 +72,8 @@ demo/            招聘表单演示页
 examples/        示例结构化档案
 scripts/         检查、依赖同步与打包脚本
 test/            客户端 Agent、档案合并和解析测试
-dist/            扩展 ZIP 与界面截图
+docs/images/     使用指南与 README 图片
+dist/            本地构建产物（不提交到仓库）
 ```
 
 ## 开发命令
