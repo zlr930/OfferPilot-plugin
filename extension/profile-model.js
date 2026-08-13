@@ -138,16 +138,32 @@ export function compactProfile(profile) {
 }
 
 export function mergeProfile(existing, imported) {
+  return mergeProfiles(existing, imported, false);
+}
+
+export function mergeParsedResume(existing, imported) {
+  return mergeProfiles(existing, imported, true);
+}
+
+function mergeProfiles(existing, imported, replaceParsedFields) {
   const target = normalizeProfile(existing);
   const source = normalizeProfile(imported);
 
+  for (const section of Object.keys(RECORD_DEFAULTS)) {
+    target[section] = coalesceRecords(section, target[section]);
+    source[section] = coalesceRecords(section, source[section]);
+  }
+
   fillEmptyStrings(target.basic, source.basic);
   fillEmptyStrings(target.preferences, source.preferences);
-  fillEmptyStrings(target.skills, source.skills);
+  if (replaceParsedFields) replaceNonEmptyStrings(target.skills, source.skills);
+  else fillEmptyStrings(target.skills, source.skills);
   if (!target.selfEvaluation.trim()) {
     target.selfEvaluation = source.selfEvaluation;
   }
-  if (!target.additionalNotes.trim()) {
+  if (replaceParsedFields && source.additionalNotes.trim()) {
+    target.additionalNotes = source.additionalNotes;
+  } else if (!target.additionalNotes.trim()) {
     target.additionalNotes = source.additionalNotes;
   } else if (
     source.additionalNotes.trim() &&
@@ -163,7 +179,8 @@ export function mergeProfile(existing, imported) {
         recordsMatch(section, record, sourceRecord),
       );
       if (match) {
-        fillEmptyStrings(match, sourceRecord);
+        if (replaceParsedFields) replaceNonEmptyStrings(match, sourceRecord);
+        else fillEmptyStrings(match, sourceRecord);
       } else {
         const record = createEmptyRecord(section);
         fillEmptyStrings(record, sourceRecord);
@@ -173,6 +190,26 @@ export function mergeProfile(existing, imported) {
   }
 
   return target;
+}
+
+function replaceNonEmptyStrings(target, source) {
+  if (!source || typeof source !== "object") return;
+  for (const key of Object.keys(target)) {
+    if (key === "id" || typeof target[key] !== "string") continue;
+    const value = toString(source[key]).trim();
+    if (value) target[key] = value;
+  }
+}
+
+function coalesceRecords(section, records) {
+  const result = [];
+  for (const record of records) {
+    if (!hasAnyRecordValue(record)) continue;
+    const match = result.find((candidate) => recordsMatch(section, candidate, record));
+    if (match) fillEmptyStrings(match, record);
+    else result.push(record);
+  }
+  return result;
 }
 
 export function calculateCompleteness(profile) {
@@ -226,13 +263,29 @@ function recordsMatch(section, left, right) {
     (key) => normalizeIdentity(left[key]) && normalizeIdentity(right[key]),
   );
   if (!comparable.length) return false;
-  return comparable.every(
-    (key) => normalizeIdentity(left[key]) === normalizeIdentity(right[key]),
+  const identityMatches = comparable.filter((key) => identitiesMatch(left[key], right[key]));
+  if (!identityMatches.length) return false;
+  const dates = ["startDate", "endDate"].filter(
+    (key) => normalizeIdentity(left[key]) && normalizeIdentity(right[key]),
+  );
+  return !dates.length || dates.some((key) => normalizeIdentity(left[key]) === normalizeIdentity(right[key]));
+}
+
+function identitiesMatch(left, right) {
+  const normalizedLeft = normalizeIdentity(left);
+  const normalizedRight = normalizeIdentity(right);
+  return (
+    normalizedLeft === normalizedRight ||
+    (Math.min(normalizedLeft.length, normalizedRight.length) >= 6 &&
+      (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)))
   );
 }
 
 function normalizeIdentity(value) {
-  return toString(value).trim().toLocaleLowerCase();
+  return toString(value)
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\s·()（）,，.。\-—_]/g, "");
 }
 
 function toString(value) {

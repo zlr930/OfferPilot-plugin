@@ -6,6 +6,7 @@ import {
   compactProfile,
   createEmptyProfile,
   mergeProfile,
+  mergeParsedResume,
   normalizeProfile,
 } from "../extension/profile-model.js";
 
@@ -63,4 +64,49 @@ test("mergeProfile fills blanks without overwriting existing values", () => {
   assert.equal(merged.basic.email, "candidate@example.com");
   assert.equal(merged.education.length, 1);
   assert.equal(merged.education[0].college, "软件学院");
+});
+
+test("mergeProfile coalesces existing partial duplicate records", () => {
+  const existing = createEmptyProfile();
+  existing.education = [
+    {
+      school: "中国科学院大学", college: "", major: "计算机技术", degree: "硕士",
+      educationType: "", startDate: "2024-09", endDate: "2027-06", gpa: "3.75",
+      rank: "", courses: "",
+    },
+    {
+      school: "中国科学院大学", college: "杭州高等研究院", major: "计算机技术", degree: "硕士",
+      educationType: "", startDate: "2024-09", endDate: "2027-06", gpa: "",
+      rank: "", courses: "并行计算",
+    },
+  ];
+  const merged = mergeProfile(existing, createEmptyProfile());
+  assert.equal(merged.education.length, 1);
+  assert.equal(merged.education[0].college, "杭州高等研究院");
+  assert.equal(merged.education[0].courses, "并行计算");
+});
+
+test("mergeParsedResume updates matching experience text without erasing manual blanks", () => {
+  const existing = createEmptyProfile();
+  existing.internships = [{
+    company: "Bybit", department: "风控", role: "Agent", city: "杭州",
+    startDate: "2025-12", endDate: "2026-06",
+    description: "5 OI Pipeline；12 Tool；40；4。",
+    achievements: "356 Spark/Presto。",
+  }];
+  existing.additionalNotes = "旧解析内容\n\n旧解析内容 2";
+  const parsed = createEmptyProfile();
+  parsed.internships = [{
+    company: "Bybit", department: "", role: "Agent", city: "",
+    startDate: "2025-12", endDate: "2026-06",
+    description: "从零设计 5 阶段 OI 排查 Pipeline，开发 12 个 Tool 对接 Hive/Presto。",
+    achievements: "将 40 分钟人工流程压缩至 4 分钟，并自动编排 356 个计算任务。",
+  }];
+  parsed.additionalNotes = "本次规范提取内容";
+  const merged = mergeParsedResume(existing, parsed);
+  assert.equal(merged.internships.length, 1);
+  assert.match(merged.internships[0].description, /从零设计/);
+  assert.match(merged.internships[0].achievements, /40 分钟人工流程压缩至 4 分钟/);
+  assert.equal(merged.internships[0].department, "风控");
+  assert.equal(merged.additionalNotes, "本次规范提取内容");
 });

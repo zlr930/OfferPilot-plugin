@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -44,6 +44,8 @@ assert.ok(manifest.host_permissions.includes("https://api.openai.com/*"));
 assert.ok(manifest.host_permissions.includes("https://api.ai.tosky.top/*"));
 assert.ok(manifest.optional_host_permissions.includes("https://*/*"));
 assert.ok(manifest.optional_host_permissions.includes("http://*/*"));
+
+await access(path.join(root, "extension/vendor/cmaps/Adobe-GB1-UCS2.bcmap"));
 
 for (const relativePath of [
   "extension/background.js",

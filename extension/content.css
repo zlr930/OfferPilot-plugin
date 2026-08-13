@@ -24,7 +24,7 @@ textarea {
   right: 24px;
   z-index: 2147483647;
   display: flex;
-  width: min(430px, calc(100vw - 24px));
+  width: min(480px, calc(100vw - 24px));
   max-height: calc(100vh - 96px);
   flex-direction: column;
   overflow: hidden;
@@ -104,7 +104,110 @@ textarea {
 .agent-body {
   min-height: 180px;
   overflow: auto;
-  background: #f7f8fa;
+  background: #f4f6f7;
+}
+
+.agent-run-bar {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid #dfe5e8;
+  background: #edf1f2;
+  color: #60707b;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.agent-run-phase {
+  padding-left: 10px;
+  border-left: 3px solid #20a66a;
+  color: #19362b;
+}
+
+.agent-run-round {
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-trace {
+  max-height: 250px;
+  overflow: auto;
+  border-bottom: 1px solid #dfe5e8;
+  background: #f9faf9;
+}
+
+.agent-trace:empty {
+  display: none;
+}
+
+.agent-trace-item {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.agent-trace-item + .agent-trace-item {
+  border-top: 1px solid #e7ebed;
+}
+
+.agent-trace-rail {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border: 2px solid #8c9aa3;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.agent-trace-running .agent-trace-rail {
+  border-color: #1776c9;
+  animation: agent-pulse 1s ease-in-out infinite;
+}
+
+.agent-trace-done .agent-trace-rail { border-color: #16865b; background: #16865b; }
+.agent-trace-pending .agent-trace-rail { border-color: #b87800; background: #fff4d8; }
+.agent-trace-error .agent-trace-rail { border-color: #c43d3d; background: #c43d3d; }
+
+.agent-trace-main { min-width: 0; }
+
+.agent-trace-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.agent-trace-kind {
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #e5eaec;
+  color: #4c5d68;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.agent-trace-title { color: #25333c; font-size: 12px; font-weight: 700; }
+.agent-trace-time { color: #8a969e; font-size: 10px; font-variant-numeric: tabular-nums; }
+.agent-trace-detail { margin-top: 3px; color: #677680; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.agent-tool-result { margin-top: 6px; color: #476052; font-size: 10px; }
+.agent-tool-result summary { cursor: pointer; user-select: none; }
+.agent-tool-result pre {
+  max-height: 130px;
+  margin: 6px 0 0;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #d9e0e2;
+  border-radius: 4px;
+  background: #eef2f1;
+  color: #34444d;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 .agent-status {
