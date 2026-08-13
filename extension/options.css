@@ -457,6 +457,116 @@ textarea:focus {
   text-align: right;
 }
 
+.button-danger {
+  border-color: #d8aaa6;
+  color: #a33d35;
+}
+
+.button-danger:hover {
+  border-color: #b84c43;
+  background: #fff3f2;
+  color: #8f2f28;
+}
+
+.resume-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  border-top: 3px solid #176c4d;
+  border-bottom: 1px solid #d8dee3;
+  background: #ffffff;
+  padding: 16px 20px 14px;
+}
+
+.resume-progress[hidden] {
+  display: none;
+}
+
+.resume-progress-copy {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.resume-progress-copy strong {
+  color: #26343e;
+  font-size: 13px;
+}
+
+.resume-progress-copy span,
+.resume-progress-value {
+  color: #697681;
+  font-size: 11px;
+}
+
+.resume-progress-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  background: #e2e7e5;
+}
+
+.resume-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: #176c4d;
+  transition: width 320ms ease;
+}
+
+.resume-progress[data-state="complete"] .resume-progress-track span {
+  background: #287a5c;
+}
+
+.resume-progress[data-state="failed"] {
+  border-top-color: #b84c43;
+}
+
+.resume-progress[data-state="failed"] .resume-progress-track span {
+  background: #b84c43;
+}
+
+.resume-progress-steps {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resume-progress-steps li {
+  color: #87929a;
+  font-size: 10px;
+}
+
+.resume-progress-steps li::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border: 1px solid #aab3b9;
+  border-radius: 50%;
+}
+
+.resume-progress-steps li.is-active {
+  color: #176c4d;
+  font-weight: 600;
+}
+
+.resume-progress-steps li.is-active::before {
+  border-color: #176c4d;
+  background: #176c4d;
+}
+
+.resume-progress-steps li.is-complete::before {
+  border-color: #66a28b;
+  background: #66a28b;
+}
+
 .resume-dialog {
   width: min(680px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - 40px));
@@ -598,6 +708,20 @@ textarea:focus {
 
   .workspace {
     width: min(100% - 32px, 680px);
+  }
+
+  .resume-progress-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .resume-progress-steps {
+    gap: 4px;
+  }
+
+  .resume-progress-steps li {
+    line-height: 1.35;
   }
 
   .topbar {

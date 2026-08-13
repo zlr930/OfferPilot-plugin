@@ -19,7 +19,7 @@
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "web_accessible_resources": [
     {
-      "resources": ["content.css"],
+      "resources": ["content.css", "skills/resume-experience-star/SKILL.md"],
       "matches": ["<all_urls>"]
     }
   ]

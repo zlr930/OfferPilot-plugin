@@ -1,5 +1,6 @@
 import {
   createMatchPlan,
+  createPageInventory,
   DEFAULT_API_BASE_URL,
   normalizeBaseUrl,
   parseResumeProfile,
@@ -39,6 +40,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const handlers = {
     "offerpilot:health": () => handleConnectionTest(message.config),
     "offerpilot:match": () => handleMatchRequest(message.payload),
+    "offerpilot:inventory-page": () => handleInventoryRequest(message.payload),
     "offerpilot:parse-resume": () => handleResumeParse(message.payload, message.config),
     "offerpilot:get-profile": () => getProfile(),
   };
@@ -114,13 +116,33 @@ async function handleMatchRequest(payload) {
   }
 }
 
+async function handleInventoryRequest(payload) {
+  try {
+    const config = await getOpenAIConfig();
+    await ensureHostPermission(config.baseUrl);
+    const data = await createPageInventory(payload, config);
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: error.message || "Agent 页面盘点失败" };
+  }
+}
+
 async function handleResumeParse(payload, override) {
   try {
     const config = await getOpenAIConfig(override);
     await ensureHostPermission(config.baseUrl);
+    const experienceSkill = await fetch(
+      chrome.runtime.getURL("skills/resume-experience-star/SKILL.md"),
+    ).then((response) => response.text());
     const data = await parseResumeProfile(
-      payload,
+      { ...payload, experienceSkill },
       config,
+      fetch,
+      (progress) => chrome.runtime.sendMessage({
+        type: "offerpilot:resume-progress",
+        parseId: payload.parseId,
+        progress,
+      }).catch(() => {}),
     );
     return { ok: true, data };
   } catch (error) {

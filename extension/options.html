@@ -47,6 +47,9 @@
             </button>
             <button id="importButton" class="button" type="button">导入</button>
             <button id="exportButton" class="button" type="button">导出</button>
+            <button id="clearProfileButton" class="button button-danger" type="button">
+              清除档案
+            </button>
             <input id="fileInput" type="file" accept=".json,.txt,.md" hidden />
             <input
               id="resumeFileInput"
@@ -56,6 +59,31 @@
             />
           </div>
         </header>
+
+        <section id="resumeProgress" class="resume-progress" aria-live="polite" hidden>
+          <div class="resume-progress-copy">
+            <strong id="resumeProgressTitle">准备解析</strong>
+            <span id="resumeProgressDetail"></span>
+          </div>
+          <span id="resumeProgressValue" class="resume-progress-value">0%</span>
+          <div
+            id="resumeProgressTrack"
+            class="resume-progress-track"
+            role="progressbar"
+            aria-label="简历解析进度"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <span id="resumeProgressBar"></span>
+          </div>
+          <ol class="resume-progress-steps" aria-label="解析环节">
+            <li data-progress-step="read">读取文件</li>
+            <li data-progress-step="extract">提取文字</li>
+            <li data-progress-step="agent">Agent 识别</li>
+            <li data-progress-step="finalize">整理结果</li>
+          </ol>
+        </section>
 
         <div id="migrationNotice" class="notice" hidden></div>
         <form id="profileForm" novalidate></form>
@@ -90,8 +118,11 @@
       <div id="resumeParseWarnings" class="resume-parse-warnings" hidden></div>
       <div class="resume-dialog-actions">
         <button id="cancelResumeButton" class="button" type="button">取消</button>
+        <button id="replaceResumeButton" class="button" type="button">
+          全新替换
+        </button>
         <button id="applyResumeButton" class="button button-primary" type="button">
-          合并到档案
+          合并修正
         </button>
       </div>
     </dialog>

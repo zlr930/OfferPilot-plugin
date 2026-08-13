@@ -3,7 +3,7 @@ import {
   compactProfile,
   createEmptyProfile,
   createEmptyRecord,
-  mergeProfile,
+  mergeParsedResume,
   normalizeProfile,
   PROFILE_SCHEMA_VERSION,
 } from "./profile-model.js";
@@ -19,6 +19,7 @@ const LEGACY_DEFAULT_API_BASE_URLS = new Set([
   "https://api.openai.com/v1",
   "https://api.tosky.top/v1",
 ]);
+const PROFILE_STORAGE_KEYS = ["profile", "profileVersion", "resumeText"];
 const extensionApi = globalThis.chrome?.storage?.local
   ? globalThis.chrome
   : createPreviewApi();
@@ -175,6 +176,7 @@ const dom = {
   migrationNotice: document.querySelector("#migrationNotice"),
   importButton: document.querySelector("#importButton"),
   exportButton: document.querySelector("#exportButton"),
+  clearProfileButton: document.querySelector("#clearProfileButton"),
   fileInput: document.querySelector("#fileInput"),
   parseResumeButton: document.querySelector("#parseResumeButton"),
   resumeFileInput: document.querySelector("#resumeFileInput"),
@@ -183,9 +185,16 @@ const dom = {
   resumeParseMeta: document.querySelector("#resumeParseMeta"),
   resumeParsePreview: document.querySelector("#resumeParsePreview"),
   resumeParseWarnings: document.querySelector("#resumeParseWarnings"),
+  resumeProgress: document.querySelector("#resumeProgress"),
+  resumeProgressTitle: document.querySelector("#resumeProgressTitle"),
+  resumeProgressDetail: document.querySelector("#resumeProgressDetail"),
+  resumeProgressValue: document.querySelector("#resumeProgressValue"),
+  resumeProgressTrack: document.querySelector("#resumeProgressTrack"),
+  resumeProgressBar: document.querySelector("#resumeProgressBar"),
   closeResumeDialogButton: document.querySelector("#closeResumeDialogButton"),
   cancelResumeButton: document.querySelector("#cancelResumeButton"),
   applyResumeButton: document.querySelector("#applyResumeButton"),
+  replaceResumeButton: document.querySelector("#replaceResumeButton"),
   saveButton: document.querySelector("#saveButton"),
   saveMessage: document.querySelector("#saveMessage"),
 };
@@ -196,6 +205,7 @@ let openaiBaseUrlValue = DEFAULT_API_BASE_URL;
 let openaiModelValue = DEFAULT_OPENAI_MODEL;
 let reasoningEffortValue = DEFAULT_REASONING_EFFORT;
 let saveTimer;
+let activeResumeParseId = "";
 let parsedResumeResult = null;
 
 await initialize();
@@ -420,9 +430,19 @@ function bindGlobalEvents() {
   dom.importButton.addEventListener("click", () => dom.fileInput.click());
   dom.fileInput.addEventListener("change", importProfile);
   dom.exportButton.addEventListener("click", exportProfile);
+  dom.clearProfileButton.addEventListener("click", clearStoredProfile);
   dom.closeResumeDialogButton.addEventListener("click", closeResumeDialog);
   dom.cancelResumeButton.addEventListener("click", closeResumeDialog);
   dom.applyResumeButton.addEventListener("click", applyParsedResume);
+  dom.replaceResumeButton.addEventListener("click", replaceWithParsedResume);
+  extensionApi.runtime.onMessage?.addListener((message) => {
+    if (
+      message?.type !== "offerpilot:resume-progress" ||
+      message.parseId !== activeResumeParseId
+    ) return;
+    const progress = message.progress || {};
+    setResumeProgress("agent", progress.percent, progress.title, progress.detail);
+  });
 }
 
 function markChanged() {
@@ -519,11 +539,14 @@ async function parseResumeFile() {
   dom.parseResumeButton.disabled = true;
   dom.parseResumeButton.textContent = "解析中...";
   dom.saveMessage.textContent = `正在解析 ${file.name}`;
+  setResumeProgress("read", 3, "读取文件", file.name);
+  activeResumeParseId = crypto.randomUUID();
   try {
     const config = getAgentConfig();
     await ensureAgentHostPermission(config.baseUrl);
-    const extracted = await extractResumeFile(file);
-    dom.saveMessage.textContent = `已读取 ${extracted.extractedCharacterCount.toLocaleString()} 个字符，Agent 正在解析（最多 4 分钟）`;
+    const extracted = await extractResumeFile(file, updateExtractionProgress);
+    dom.saveMessage.textContent = `已读取 ${extracted.extractedCharacterCount.toLocaleString()} 个字符，Agent 正在解析与 STAR 润色（最多 8 分钟）`;
+    setResumeProgress("agent", 48, "Agent 正在识别", "分析基本信息与经历");
     const response = await extensionApi.runtime.sendMessage({
       type: "offerpilot:parse-resume",
       payload: {
@@ -531,10 +554,12 @@ async function parseResumeFile() {
         fileType: extracted.fileType,
         text: extracted.text,
         extractedCharacterCount: extracted.extractedCharacterCount,
+        parseId: activeResumeParseId,
       },
       config,
     });
     if (!response?.ok) throw new Error(response?.error || "简历解析失败");
+    setResumeProgress("finalize", 96, "整理解析结果", "校验结构化档案");
     const body = response.data;
     if (extracted.truncated) {
       body.warnings = [
@@ -544,14 +569,53 @@ async function parseResumeFile() {
     }
     parsedResumeResult = body;
     renderResumePreview(body);
+    setResumeProgress("finalize", 100, "解析完成", "请检查结果后合并");
     dom.resumeParseDialog.showModal();
     dom.saveMessage.textContent = "解析完成，请确认后合并";
   } catch (error) {
+    setResumeProgress("finalize", 100, "解析失败", error.message, true);
     dom.saveMessage.textContent = `解析失败：${error.message}`;
   } finally {
+    activeResumeParseId = "";
     dom.parseResumeButton.disabled = false;
     dom.parseResumeButton.textContent = originalLabel;
   }
+}
+
+function updateExtractionProgress(event) {
+  if (event.phase === "read") {
+    setResumeProgress("read", 8, "读取文件", "正在载入本地简历");
+    return;
+  }
+  if (event.phase === "extract") {
+    const progress = Math.max(0, Math.min(1, event.progress));
+    const detail = event.total
+      ? `第 ${event.current} / ${event.total} 页`
+      : "识别文档文字层";
+    setResumeProgress("extract", 12 + Math.round(30 * progress), "提取简历文字", detail);
+    return;
+  }
+  if (event.phase === "normalize") {
+    setResumeProgress("extract", 45, "清理文本结构", "合并段落与空白字符");
+  }
+}
+
+function setResumeProgress(phase, percent, title, detail = "", failed = false) {
+  const value = Math.max(0, Math.min(100, Math.round(percent)));
+  dom.resumeProgress.hidden = false;
+  dom.resumeProgress.dataset.state = failed ? "failed" : value === 100 ? "complete" : "active";
+  dom.resumeProgressTitle.textContent = title;
+  dom.resumeProgressDetail.textContent = detail;
+  dom.resumeProgressValue.textContent = `${value}%`;
+  dom.resumeProgressBar.style.width = `${value}%`;
+  dom.resumeProgressTrack.setAttribute("aria-valuenow", String(value));
+
+  const phases = ["read", "extract", "agent", "finalize"];
+  const activeIndex = phases.indexOf(phase);
+  dom.resumeProgress.querySelectorAll("[data-progress-step]").forEach((step, index) => {
+    step.classList.toggle("is-complete", index < activeIndex || value === 100);
+    step.classList.toggle("is-active", index === activeIndex && value < 100);
+  });
 }
 
 function renderResumePreview(result) {
@@ -643,14 +707,42 @@ function renderResumePreview(result) {
 
 async function applyParsedResume() {
   if (!parsedResumeResult?.profile) return;
-  const before = countProfileFacts(profile);
-  profile = mergeProfile(profile, parsedResumeResult.profile);
-  const added = Math.max(0, countProfileFacts(profile) - before);
+  const before = normalizeProfile(profile);
+  profile = mergeParsedResume(profile, parsedResumeResult.profile);
+  const changes = countProfileChanges(before, profile);
   renderPage();
   updateCompleteness();
   closeResumeDialog();
   await saveProfile(false);
-  dom.saveMessage.textContent = `已合并 ${added} 项新信息，请检查档案内容`;
+  dom.saveMessage.textContent = `已新增 ${changes.added} 项、更新 ${changes.updated} 项信息，请检查档案内容`;
+}
+
+async function replaceWithParsedResume() {
+  if (!parsedResumeResult?.profile) return;
+  if (!globalThis.confirm("全新替换会清除当前档案内容，并仅保留本次简历解析结果。是否继续？")) {
+    return;
+  }
+  profile = normalizeProfile(parsedResumeResult.profile);
+  renderPage();
+  updateCompleteness();
+  closeResumeDialog();
+  await saveProfile(false);
+  dom.saveMessage.textContent = "已使用本次解析结果重建个人档案";
+}
+
+async function clearStoredProfile() {
+  if (!globalThis.confirm("清除当前个人档案和旧版简历缓存？Agent API 配置会保留。")) {
+    return;
+  }
+  clearTimeout(saveTimer);
+  profile = createEmptyProfile();
+  parsedResumeResult = null;
+  dom.resumeProgress.hidden = true;
+  dom.migrationNotice.hidden = true;
+  await extensionApi.storage.local.remove(PROFILE_STORAGE_KEYS);
+  renderPage();
+  updateCompleteness();
+  dom.saveMessage.textContent = "个人档案已清除，Agent API 配置已保留";
 }
 
 function closeResumeDialog() {
@@ -669,6 +761,31 @@ function countProfileFacts(value) {
     );
   }
   return typeof value === "string" && value.trim() ? 1 : 0;
+}
+
+function countProfileChanges(before, after) {
+  let added = 0;
+  let updated = 0;
+  const visit = (left, right) => {
+    if (Array.isArray(right)) {
+      const leftItems = Array.isArray(left) ? left : [];
+      right.forEach((item, index) => visit(leftItems[index], item));
+      return;
+    }
+    if (right && typeof right === "object") {
+      for (const [key, value] of Object.entries(right)) {
+        if (key !== "id" && key !== "schemaVersion") visit(left?.[key], value);
+      }
+      return;
+    }
+    const oldValue = String(left || "").trim();
+    const newValue = String(right || "").trim();
+    if (!newValue || newValue === oldValue) return;
+    if (oldValue) updated += 1;
+    else added += 1;
+  };
+  visit(before, after);
+  return { added, updated };
 }
 
 function summarize(value, maxLength) {
@@ -755,6 +872,9 @@ function createPreviewApi() {
           for (const [key, value] of Object.entries(values)) {
             localStorage.setItem(`offerpilot:${key}`, JSON.stringify(value));
           }
+        },
+        async remove(keys) {
+          for (const key of keys) localStorage.removeItem(`offerpilot:${key}`);
         },
       },
     },

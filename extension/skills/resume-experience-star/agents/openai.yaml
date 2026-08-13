@@ -1,0 +1,4 @@
+interface:
+  display_name: "简历经历 STAR 润色"
+  short_description: "从原始简历保真提取经历，生成完整且可核验的 STAR 描述"
+  default_prompt: "Use $resume-experience-star to extract and polish resume experiences without losing evidence."
