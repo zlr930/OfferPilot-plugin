@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createMatchPlan,
+  matchCandidateOption,
   extractResponseText,
   finalizeResumeSubmission,
   normalizeBaseUrl,
@@ -31,6 +32,32 @@ test("extractResponseText reads Responses API output text", () => {
   assert.equal(text, "{}");
 });
 
+test('publication finalization keeps same-venue papers separate and prevents quartiles becoming impact factors',()=>{
+  const result=finalizeResumeSubmission({output:{profile:{publications:[
+    {title:'Paper A',venue:'Systems',date:'2022',impactFactor:'JCR Q2'},
+    {title:'Paper B...continued',venue:'Systems',date:'2022',authorOrder:''},
+  ]},warnings:[]}});
+  assert.equal(result.output.profile.publications.length,2);
+  assert.equal(result.output.profile.publications[0].impactFactor,'');
+  assert.equal(result.output.profile.publications[0].indexing,'JCR Q2');
+  assert.equal(result.output.profile.publications[1].authorOrder,'');
+  assert.ok(result.output.warnings.some(item=>item.includes('标题可能不完整')));
+});
+
+test("candidate matching rejects hallucinated or low-confidence options", async () => {
+  const config = { apiKey: "test", baseUrl: "https://example.com/v1", model: "test" };
+  const request = { value: "本科", label: "Degree", candidates: ["Bachelor", "Master"] };
+  for (const [value, confidence, expected] of [["Bachelor", 0.98, "Bachelor"], ["Doctor", 1, null], ["Bachelor", 0.8, null]]) {
+    const fetchImpl = async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.store, false);
+      assert.deepEqual(JSON.parse(body.input).candidates, request.candidates);
+      return new Response(JSON.stringify({ output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ value, confidence }) }] }] }));
+    };
+    assert.deepEqual(await matchCandidateOption(request, config, fetchImpl), { value: expected });
+  }
+});
+
 test("validateAgentPlan drops invalid fields and protects sensitive values", () => {
   const { accepted, dropped } = validateAgentPlan(
     {
@@ -50,6 +77,16 @@ test("validateAgentPlan drops invalid fields and protects sensitive values", () 
   );
   assert.equal(accepted.length, 1);
   assert.equal(dropped.length, 1);
+});
+
+test("multi-value plans validate every choice and keep dynamic combobox labels", () => {
+  const fields = [
+    { id: "multi", type: "select", multiple: true, currentValue: "", label: "Skills", options: [{ label: "A", value: "a" }, { label: "B", value: "b" }] },
+    { id: "search", type: "combobox", currentValue: "", label: "School", options: [] },
+  ];
+  const good = validateAgentPlan({ matches: [{ fieldId: "multi", value: "A,B", confidence: 1 }, { fieldId: "search", value: "University", confidence: 1 }] }, fields);
+  assert.deepEqual(good.accepted.map((match) => match.value), ["a,b", "University"]);
+  assert.equal(validateAgentPlan({ matches: [{ fieldId: "multi", value: "a,unknown", confidence: 1 }] }, fields).accepted.length, 0);
 });
 
 test("createMatchPlan sends strict structured output request", async () => {

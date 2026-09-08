@@ -17,7 +17,21 @@
     agentRounds: 0,
     trace: [],
     matches: [],
+    snapshots: new Map(),
+    outcomes: new Map(),
+    feedback: [],
   };
+  const engine = window.__OFFERPILOT_FORM__;
+  const failedActions = new WeakSet();
+  const rulesReady = chrome.runtime.sendMessage({type:'offerpilot:load-rules'}).then((response) => {
+    engine.configureRules(response?.ok ? response.data : [], (rules) => {
+      chrome.runtime.sendMessage({type:'offerpilot:save-rules', rules}).catch(() => {});
+    });
+  }).catch(() => {});
+  engine.setOptionMatcher(async (payload) => {
+    const response = await chrome.runtime.sendMessage({ type: "offerpilot:match-option", payload });
+    return response?.ok ? response.data.value : null;
+  });
 
   const host = document.createElement("div");
   host.id = "offerpilot-root";
@@ -61,7 +75,9 @@
   runBar.append(runPhase, runRound);
   const tracePanel = createElement("div", "agent-trace");
   const content = createElement("div");
-  body.append(status, runBar, tracePanel, content);
+  const traceDetails = createElement("details", "agent-trace-details");
+  traceDetails.append(createElement("summary", "", "执行详情"), runBar, tracePanel);
+  body.append(status, content, traceDetails);
 
   const footer = createElement("footer", "agent-footer");
   const secondaryButton = createElement("button", "agent-button", "配置简历");
@@ -177,6 +193,7 @@
   function renderResults(result) {
     content.replaceChildren();
     const results = createElement("div", "agent-results");
+    for (const warning of result.warnings || []) results.append(createElement('div', 'agent-summary', `需要核对：${warning}`));
     results.append(
       createElement(
         "div",
@@ -231,14 +248,14 @@
       return;
     }
     if (state.view === "done") {
-      resetAnalysis();
+      await analyzePage();
       return;
     }
     await analyzePage();
   }
 
   function handleSecondaryAction() {
-    if (state.view === "results") {
+    if (state.view === "results" || state.view === "done") {
       resetAnalysis();
       return;
     }
@@ -249,10 +266,29 @@
     setBusy(true);
     const scanTrace = addTrace("TOOL", "扫描页面结构", "读取可见经历、字段和安全操作", null, "running");
     setStatus("正在读取页面字段", "working");
-    renderEmpty("正在分析", "只发送字段标签和候选项，不发送整页内容");
+    renderEmpty("正在分析", "读取表单字段、候选项和经历上下文");
     primaryButton.textContent = "分析中";
 
     try {
+      await rulesReady;
+      let extracted = extractFields();
+      if (!extracted.fields.length) {
+        const editors = [...document.querySelectorAll('button, a, [role="button"]')].filter(element =>
+          !host.contains(element) && engine.visible(element) && !element.disabled && /^编辑简历$/.test(cleanLabel(element.textContent)));
+        if (editors.length === 1) {
+          const editor = editors[0];
+          if (failedActions.has(editor)) throw new Error('编辑简历未进入编辑态，请检查页面后重试');
+          const actionTrace = addTrace('ACTION', '进入简历编辑模式', '点击编辑简历，等待可操作字段出现', null, 'running');
+          try {
+            await performObservedAction(editor, 'edit_record');
+            extracted = extractFields();
+            updateTrace(actionTrace, { state: 'done', detail: `编辑态已确认，发现 ${extracted.fields.length} 个字段`, data: { status: 'editor_opened', fieldCount: extracted.fields.length } });
+          } catch (error) {
+            updateTrace(actionTrace, {state:'error',detail:error.message,data:{status:'no_editor_detected'}});
+            throw error;
+          }
+        }
+      }
       const profileResponse = await chrome.runtime.sendMessage({
         type: "offerpilot:get-profile",
       });
@@ -265,17 +301,20 @@
         throw new Error("请先在设置中完善个人档案");
       }
 
-      const extracted = extractFields();
       state.fields = extracted.fields;
       state.fieldElements = extracted.fieldElements;
       state.actionElements = extracted.actionElements;
+      state.snapshots = new Map([...state.fieldElements].map(([id, elements]) => [id, engine.snapshot(elements)]));
+      state.outcomes = new Map();
+      state.matches = [];
+      state.plannedAction = null;
       updateTrace(scanTrace, { state: "done", detail: `发现 ${state.fields.length} 个字段、${extracted.actions.length} 个可执行动作`, data: { headings: extracted.pageContext.headings, actions: extracted.actions } });
       if (!state.fields.length && !extracted.actions.length) {
         throw new Error("当前页面没有找到可填写字段");
       }
 
       setStatus(`Agent 正在匹配 ${state.fields.length} 个字段`, "working");
-      if (!state.fields.length) {
+      if (!state.fields.some((field) => !field.currentValue) && extracted.actions.some((action) => ["add_record", "edit_record"].includes(action.type))) {
         const inventoryTrace = addTrace("AGENT", "盘点并对齐经历", "比对网页现有记录与个人档案", null, "running");
         setStatus("Agent 正在盘点现有经历", "working");
         const inventoryResponse = await chrome.runtime.sendMessage({
@@ -310,6 +349,7 @@
           fields: state.fields,
           actions: extracted.actions,
           targetRecord: state.targetRecord,
+          executionFeedback: state.feedback.slice(-30),
         },
       });
       if (!response?.ok) throw new Error(response?.error || "Agent 匹配失败");
@@ -318,10 +358,14 @@
       addTrace("AGENT", "生成字段填充计划", response.data.summary, { targetRecord: state.targetRecord, matches: state.matches.map((match) => ({ fieldId: match.fieldId, value: match.value, confidence: match.confidence })) });
       state.plannedAction = response.data.actions?.[0] || null;
       if (!state.matches.length && !state.plannedAction) {
-        state.view = "idle";
-        setStatus("没有可安全填写的匹配项", "success");
-        renderEmpty("未匹配到字段", "页面内容保持不变");
-        primaryButton.textContent = "重新分析";
+        state.view = "done";
+        const emptyCount = state.fields.filter(field => !field.currentValue).length;
+        setStatus(`没有新增填充项，${emptyCount} 个空字段待核对`, "idle");
+        renderOutcomes();
+        const explanation = createElement('div', 'agent-summary', response.data.summary || '当前档案没有可直接补填的匹配项');
+        content.prepend(explanation);
+        for (const warning of response.data.warnings || []) content.append(createElement('div', 'agent-summary', `需要核对：${warning}`));
+        primaryButton.textContent = "补充填写";
         return;
       }
 
@@ -395,6 +439,8 @@
     state.plannedAction = null;
     state.targetRecord = "";
     state.agentRounds = 0;
+    state.snapshots = new Map();
+    state.outcomes = new Map();
     setStatus("准备分析当前表单");
     renderEmpty("当前页面尚未分析");
     secondaryButton.textContent = "配置简历";
@@ -419,27 +465,70 @@
       if (!selectedIds.has(match.fieldId)) continue;
       const elements = state.fieldElements.get(match.fieldId) || [];
       try {
-        await applyValue(elements, match.value);
-        markElements(elements, true);
+        const applied = await executeMatch(match);
+        markElements(applied.elements, true);
+        state.outcomes.set(match.fieldId, { success: true, value: applied.value });
         addTrace("TOOL", "写入字段", state.fields.find((field) => field.id === match.fieldId)?.label || match.fieldId, { value: match.value }, "done");
         successCount += 1;
       } catch (error) {
+        state.outcomes.set(match.fieldId, { success: false, reason: engine.message(error) });
+        const field = state.fields.find((item) => item.id === match.fieldId);
+        state.feedback.push({ label: field?.label, section: field?.section, type: field?.type, attemptedValue: match.value, code: error.message, reason: engine.message(error) });
         markElements(elements, false);
         addTrace("TOOL", "字段写入失败", state.fields.find((field) => field.id === match.fieldId)?.label || match.fieldId, { error: error.message }, "error");
         failureCount += 1;
       }
     }
 
-    if (state.plannedAction && failureCount === 0 && state.agentRounds < 20) {
+    for (const [id, outcome] of state.outcomes) {
+      if (!outcome.success) continue;
+      try {
+        const elements = engine.resolve(state.snapshots.get(id));
+        if (engine.read(elements) !== outcome.value || engine.validationError(elements)) throw new Error("write_not_persisted");
+      } catch (error) {
+        state.outcomes.set(id, { success: false, reason: engine.message(error) });
+        successCount -= 1;
+        failureCount += 1;
+      }
+    }
+    const allApproved = state.matches.every((match) => selectedIds.has(match.fieldId));
+    if (state.plannedAction && failureCount === 0 && allApproved && state.agentRounds < 20) {
       const actionElement = state.actionElements.get(state.plannedAction.actionId);
-      if (actionElement) {
+      if (actionElement?.isConnected && engine.visible(actionElement) && !actionElement.disabled) {
+        const actionScope = actionElement.closest('form, [role="dialog"]');
+        if (state.plannedAction.type === "finish_record" && (!actionScope || engine.validationError([...actionScope.querySelectorAll('input, select, textarea')]))) {
+          setStatus("当前记录仍有校验问题，请检查后保存", "error");
+          renderOutcomes();
+          state.view = "done";
+          primaryButton.textContent = "补充填写";
+          setBusy(false);
+          return;
+        }
         const actionTrace = addTrace("ACTION", state.plannedAction.label || "执行页面动作", state.targetRecord, null, "running");
         actionElement.scrollIntoView({ block: "center", behavior: "smooth" });
         await new Promise((resolve) => setTimeout(resolve, 120));
-        actionElement.click();
-        if (state.plannedAction.type === "finish_record") state.targetRecord = "";
+        try {
+          await performObservedAction(actionElement, state.plannedAction.type);
+        } catch (error) {
+          updateTrace(actionTrace, {state:'error',detail:error.message,data:{status:'no_expected_change'}});
+          setStatus(error.message, 'error');
+          state.plannedAction = null;
+          state.view = 'done';
+          primaryButton.textContent = '重新分析';
+          setBusy(false);
+          return;
+        }
         state.agentRounds += 1;
-        await waitForPageUpdate();
+        if (state.plannedAction.type === "finish_record" && actionElement.isConnected && engine.visible(actionElement)) {
+          updateTrace(actionTrace, { state: "error", detail: "尚未确认记录保存，请检查页面" });
+          setStatus("尚未确认记录保存，请检查页面", "error");
+          renderOutcomes();
+          state.view = "done";
+          primaryButton.textContent = "补充填写";
+          setBusy(false);
+          return;
+        }
+        if (state.plannedAction.type === "finish_record") state.targetRecord = "";
         updateTrace(actionTrace, { state: "done", detail: "页面已更新，重新进入盘点" });
         state.view = "idle";
         setBusy(false);
@@ -455,34 +544,87 @@
       failureCount ? "error" : "success",
     );
     state.view = "done";
-    primaryButton.textContent = "重新分析";
+    renderOutcomes();
+    primaryButton.textContent = "补充填写";
     setBusy(false);
+  }
+
+  function renderOutcomes() {
+    content.replaceChildren();
+    const results = createElement("div", "agent-results");
+    for (const field of state.fields) {
+      const outcome = state.outcomes.get(field.id);
+      if (field.currentValue && !outcome) continue;
+      const row = createElement("div", "agent-outcome-row");
+      const main = createElement("div", "agent-match-main");
+      main.append(createElement("div", "agent-match-label", `${field.required ? "必填 · " : ""}${field.label}`));
+      main.append(createElement("div", "agent-match-reason", outcome?.success ? "已填写并通过读回校验" : outcome?.reason || (state.matches.some((match) => match.fieldId === field.id) ? "未勾选，等待确认" : "未匹配到档案事实，请补充或手动填写")));
+      const locate = createElement("button", "agent-icon-button", "↗");
+      locate.title = "定位字段";
+      locate.setAttribute("aria-label", `定位${field.label}`);
+      locate.addEventListener("click", () => {
+        try { const [element] = engine.resolve(state.snapshots.get(field.id)); element.scrollIntoView({ block: "center" }); element.focus(); } catch { setStatus("页面已变化，请重新分析", "error"); }
+      });
+      row.append(main, locate);
+      const match = state.matches.find((item) => item.fieldId === field.id);
+      if (outcome && !outcome.success && match) {
+        const retry = createElement("button", "agent-icon-button", "↻");
+        retry.title = "重试此字段";
+        retry.setAttribute("aria-label", `重试${field.label}`);
+        retry.addEventListener("click", async () => {
+          if (state.busy) return;
+          setBusy(true);
+          try {
+            const applied = await engine.apply(state.snapshots.get(field.id), match.value);
+            state.outcomes.set(field.id, { success: true, value: applied.value });
+          } catch (error) { state.outcomes.set(field.id, { success: false, reason: engine.message(error) }); }
+          renderOutcomes();
+          setStatus(`已验证 ${[...state.outcomes.values()].filter((item) => item.success).length} 项，剩余项请检查`);
+          setBusy(false);
+        });
+        row.append(retry);
+      }
+      results.append(row);
+    }
+    content.append(results);
+  }
+
+  async function executeMatch(match) {
+    const snapshot = state.snapshots.get(match.fieldId);
+    try { return await engine.apply(snapshot, match.value); }
+    catch (error) {
+      // One automatic recovery of the approved value; replanning still returns to review.
+      if (!["option_not_found", "write_not_persisted"].includes(error.message)) throw error;
+      const field = state.fields.find((item) => item.id === match.fieldId);
+      state.feedback.push({ label: field?.label, section: field?.section, type: field?.type, attemptedValue: match.value, code: error.message });
+      addTrace("RECOVER", "重新观察并重试字段", field?.label || match.fieldId);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return engine.apply(snapshot, match.value);
+    }
   }
 
   function extractFields() {
     revealResumeSectionControls();
-    const candidates = [
-      ...document.querySelectorAll(
-        'input, select, textarea, [contenteditable="true"]',
-      ),
-    ].filter(isEligibleElement);
+    const candidates = engine.candidates().filter(isEligibleElement);
     const fields = [];
     const fieldElements = new Map();
     const grouped = new Set();
 
     for (const element of candidates) {
-      const inputType = (element.type || "").toLowerCase();
+      const inputType = engine.kind(element);
+      const ariaGroup = element.closest('[role="radiogroup"], [role="group"]');
+      const groupName = element.name || (ariaGroup ? `aria:${[...document.querySelectorAll('[role="radiogroup"], [role="group"]')].indexOf(ariaGroup)}` : '');
       const groupKey =
-        ["radio", "checkbox"].includes(inputType) && element.name
-          ? `${inputType}:${element.name}`
+        ["radio", "checkbox"].includes(inputType) && groupName
+          ? `${inputType}:${groupName}:${getFieldGroup(element, 0).id}`
           : null;
       if (groupKey && grouped.has(groupKey)) continue;
 
       const elements = groupKey
         ? candidates.filter(
             (candidate) =>
-              (candidate.type || "").toLowerCase() === inputType &&
-              candidate.name === element.name,
+              engine.kind(candidate) === inputType &&
+              (element.name ? candidate.name === element.name : candidate.closest('[role="radiogroup"], [role="group"]') === ariaGroup) && getFieldGroup(candidate, 0).id === getFieldGroup(element, 0).id,
           )
         : [element];
       if (groupKey) grouped.add(groupKey);
@@ -502,6 +644,7 @@
         groupLabel: group.label,
         groupContext: group.context,
         type,
+        multiple: type === "checkbox" || engine.multiple(element),
         required: elements.some(
           (target) =>
             target.required || target.getAttribute("aria-required") === "true",
@@ -522,6 +665,7 @@
       actions,
       actionElements,
       pageContext: {
+        platform: engine.platform().id,
         headings: [...document.querySelectorAll("h1, h2, h3, h4, [role='heading']")]
           .map((heading) => cleanLabel(heading.textContent))
           .filter(Boolean)
@@ -538,7 +682,8 @@
     const seen = new Set();
     const lines = [];
     for (const element of nodes) {
-      const text = cleanLabel(element.innerText || element.textContent);
+      const rawText = String(element.innerText || element.textContent || '').replace(/[\s\u00a0]+/g, ' ').trim();
+      const text = rawText.slice(0, 14000) + (rawText.length > 14000 ? ' [内容截断，不能据此判定后续记录缺失]' : '');
       if (!text || seen.has(text)) continue;
       seen.add(text);
       lines.push(`[${element.tagName.toLowerCase()}] ${text}`);
@@ -550,13 +695,14 @@
   function extractPageActions() {
     const actions = [];
     const actionElements = new Map();
+    const seenClickables = new Set();
     const candidates = [...document.querySelectorAll(
       "button, [role='button'], a, [class*='add'], [class*='Add'], [class*='edit'], [class*='Edit'], [onclick]",
-    )].filter((element) => element instanceof HTMLElement && !host.contains(element));
+    )].filter((element) => element instanceof HTMLElement && !host.contains(element) && engine.visible(element));
     for (const element of candidates) {
       let label = cleanLabel(element.textContent || element.getAttribute("aria-label") || element.title);
       let type = "";
-      if (/(?:新增|添加).*(?:项目|实习|工作|教育|校园|奖项|经历)/.test(label)) type = "add_record";
+      if (label.length <= 40 && /^(?:新增|添加).*(?:项目|实习|工作|教育|校园|奖项|经历|论文)$/.test(label)) type = "add_record";
       else if (/(?:^|[-_])(add|plus)(?:[-_]|$)/i.test(String(element.className || ""))) {
         const sectionName = findResumeSectionName(element);
         if (sectionName) {
@@ -574,7 +720,8 @@
       else if (/^(?:完成|保存)$/.test(label) && element.closest("form, [role='dialog'], [class*='edit'], [class*='form']")) type = "finish_record";
       if (!type || /删除|取消|投递|提交/.test(label)) continue;
       const clickable = closestClickableElement(element);
-      if (!clickable) continue;
+      if (!clickable || clickable.disabled || failedActions.has(clickable) || seenClickables.has(clickable)) continue;
+      seenClickables.add(clickable);
       const id = `agent-action-${actions.length + 1}`;
       actions.push({ id, type, label, context: cleanLabel(element.parentElement?.textContent).slice(0, 1000) });
       actionElements.set(id, clickable);
@@ -585,8 +732,10 @@
   function findResumeSectionName(element) {
     let current = element.parentElement;
     for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
-      const text = cleanLabel(current.textContent);
-      const match = text.match(/(?:项目经历|工作经历|教育经历|实习经历|校园经历|获得奖项)/);
+      if (current === document.body || current === document.documentElement || current.matches('main')) break;
+      const heading = current.querySelector(':scope > .model_title, :scope > h2, :scope > h3, :scope > legend, :scope > [role="heading"]');
+      const text = cleanLabel(heading?.textContent || current.textContent);
+      const match = text.match(/^(基础信息|语言水平|工作\/实习经历|项目经历|工作经历|教育经历|实习经历|校园经历|获得奖项|论文)$/);
       if (match) return match[0];
     }
     return "";
@@ -629,6 +778,25 @@
     });
   }
 
+  async function performObservedAction(element, type) {
+    if (!element.isConnected || !engine.visible(element) || element.disabled || failedActions.has(element)) throw new Error('操作入口已变化，请重新分析');
+    const before = new Set(engine.candidates().filter(isEligibleElement));
+    const scope = element.closest('form, [role="dialog"], .modal_form');
+    element.click();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 120));
+      if (type === 'finish_record') {
+        if ((!element.isConnected || !engine.visible(element)) && (!scope || !engine.validationError([...scope.querySelectorAll('input,select,textarea')]))) return;
+      } else {
+        const after = engine.candidates().filter(isEligibleElement);
+        if (after.some(field => !before.has(field))) return;
+      }
+    }
+    failedActions.add(element);
+    throw new Error(type === 'finish_record' ? '未确认保存成功，已停止后续操作' : '点击后没有出现新的编辑字段，已停止重复操作');
+  }
+
   function getFieldGroup(element, fallbackIndex) {
     const selectors = [
       "fieldset", "section", "[role='group']", "form",
@@ -636,7 +804,7 @@
       "[class*='formCard']", "[class*='form-card']", "[class*='resumeItem']",
       "[class*='resume-item']", "[class*='project']",
     ];
-    let container = element.closest(selectors.join(", "));
+    let container = engine.group(element) || element.closest(selectors.join(", "));
     if (!container) container = closestSharedFormContainer(element);
     const label = cleanLabel(
       container?.querySelector(":scope > legend, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > [role='heading']")?.textContent ||
@@ -685,7 +853,7 @@
         "button",
         "reset",
         "image",
-      ].includes(type)
+      ].includes(type) && !(type === "button" && ["combobox", "cascader"].includes(engine.kind(element)))
     ) {
       return false;
     }
@@ -703,6 +871,8 @@
   }
 
   function getFieldType(element) {
+    const controlKind = engine.kind(element);
+    if (["combobox", "cascader", "datepicker", "daterange", "radio", "checkbox", "switch", "slider", "spinbutton"].includes(controlKind)) return controlKind;
     if (element.isContentEditable) return "contenteditable";
     if (element instanceof HTMLSelectElement) return "select";
     if (element instanceof HTMLTextAreaElement) return "textarea";
@@ -729,6 +899,8 @@
   }
 
   function getFieldLabel(element, groupElements) {
+    const platformLabel = engine.label(element);
+    if (platformLabel) return platformLabel;
     if (groupElements.length > 1) {
       const legend = element
         .closest("fieldset")
@@ -773,6 +945,8 @@
   }
 
   function getSectionLabel(element) {
+    const platformHeading = engine.heading(element);
+    if (platformHeading) return platformHeading;
     const section = element.closest("fieldset, section, [role='group'], form, [class*='project'], [class*='resume']");
     const heading = section?.querySelector(
       "legend, h1, h2, h3, h4, [role='heading']",
@@ -780,22 +954,8 @@
     return cleanLabel(heading?.textContent).slice(0, 300);
   }
 
-  function getCurrentValue(elements, type) {
-    if (type === "radio") {
-      return elements.find((element) => element.checked)?.value || "";
-    }
-    if (type === "checkbox") {
-      return elements
-        .filter((element) => element.checked)
-        .map((element) => element.value || "true")
-        .join(",");
-    }
-    const element = elements[0];
-    return String(
-      element.isContentEditable ? element.textContent : element.value || "",
-    )
-      .trim()
-      .slice(0, 4000);
+  function getCurrentValue(elements) {
+    return engine.read(elements).slice(0, 4000);
   }
 
   function getOptions(elements, type) {
@@ -808,84 +968,15 @@
           value: String(option.value).slice(0, 300),
         }));
     }
-    if (["radio", "checkbox"].includes(type)) {
+    if (["radio", "checkbox", "switch"].includes(type)) {
       return elements.slice(0, 200).map((element) => ({
         label: cleanLabel(
-          element.labels?.[0]?.textContent || element.value,
+          element.labels?.[0]?.textContent || engine.optionValue(element),
         ).slice(0, 300),
-        value: String(element.value || "true").slice(0, 300),
+        value: engine.optionValue(element).slice(0, 300),
       }));
     }
     return [];
-  }
-
-  async function applyValue(elements, value) {
-    if (!elements.length) throw new Error("field_not_found");
-    const element = elements[0];
-    const type = getFieldType(element);
-    element.scrollIntoView({ block: "center", behavior: "smooth" });
-    await new Promise((resolve) => setTimeout(resolve, 80));
-
-    if (type === "radio") {
-      const target = elements.find(
-        (candidate) => String(candidate.value) === value,
-      );
-      if (!target) throw new Error("option_not_found");
-      target.click();
-      dispatchFormEvents(target);
-      return;
-    }
-
-    if (type === "checkbox") {
-      const selectedValues = new Set(
-        value.split(",").map((part) => part.trim()),
-      );
-      for (const target of elements) {
-        const shouldCheck = selectedValues.has(String(target.value || "true"));
-        if (target.checked !== shouldCheck) target.click();
-        dispatchFormEvents(target);
-      }
-      return;
-    }
-
-    if (type === "select") {
-      const targetOption = [...element.options].find(
-        (option) => String(option.value) === value,
-      );
-      if (!targetOption) throw new Error("option_not_found");
-      setNativeValue(element, targetOption.value);
-      dispatchFormEvents(element);
-      return;
-    }
-
-    if (type === "contenteditable") {
-      element.focus();
-      element.textContent = value;
-      dispatchFormEvents(element);
-      return;
-    }
-
-    element.focus();
-    setNativeValue(element, value);
-    dispatchFormEvents(element);
-  }
-
-  function setNativeValue(element, value) {
-    const prototype =
-      element instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : element instanceof HTMLSelectElement
-          ? HTMLSelectElement.prototype
-          : HTMLInputElement.prototype;
-    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-    if (setter) setter.call(element, value);
-    else element.value = value;
-  }
-
-  function dispatchFormEvents(element) {
-    element.dispatchEvent(new Event("input", { bubbles: true }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    element.dispatchEvent(new Event("blur", { bubbles: true }));
   }
 
   function markElements(elements, success) {

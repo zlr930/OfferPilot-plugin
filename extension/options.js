@@ -8,6 +8,7 @@ import {
   PROFILE_SCHEMA_VERSION,
 } from "./profile-model.js";
 import { extractResumeFile } from "./resume-parser.js";
+import { runResumeTask } from "./resume-task.js";
 import {
   DEFAULT_API_BASE_URL,
   normalizeBaseUrl,
@@ -32,6 +33,8 @@ const SECTIONS = [
     fields: [
       ["fullName", "姓名", "text", "如：张三", true],
       ["preferredName", "英文名 / 常用名", "text", "选填"],
+      ["website", "个人网站", "url", "https://example.com"],
+      ["github", "GitHub", "url", "https://github.com/username"],
       ["gender", "性别", "select", ["", "男", "女", "其他 / 不便透露"]],
       ["birthDate", "出生日期", "date"],
       ["phone", "手机号", "tel", "常用手机号", true],
@@ -142,6 +145,27 @@ const SECTIONS = [
     ],
   },
   {
+    id: "publications",
+    title: "论文与发表",
+    description: "分别记录论文、发表渠道和作者信息。分区与影响因子分开填写。",
+    repeat: true,
+    addLabel: "添加论文",
+    fields: [
+      ["title", "论文名称", "text", "保留原始完整标题", true, "wide"],
+      ["venue", "发表渠道", "text", "会议或期刊名称"],
+      ["authors", "作者列表", "text", "按原文顺序，保留 et al.", false, "wide"],
+      ["applicantAuthor", "本人署名", "text", "如：Ran, X.；用于核对作者顺序"],
+      ["authorOrder", "作者顺序", "text", "如：二作；无法确定时留空"],
+      ["date", "发表时间", "text", "YYYY 或 YYYY-MM-DD"],
+      ["publicationType", "发表类型", "select", ["", "会议论文", "期刊论文", "预印本", "学位论文", "其他"]],
+      ["indexing", "收录 / 分区", "text", "如：JCR Q2"],
+      ["impactFactor", "影响因子", "text", "仅填写明确提供的数值"],
+      ["doi", "DOI", "text", "选填"],
+      ["link", "论文链接", "url", "论文页面链接", false, "wide"],
+      ["notes", "补充说明", "textarea", "标题不完整或其他需要确认的信息", false, "wide"],
+    ],
+  },
+  {
     id: "skills",
     title: "技能与证书",
     description: "使用招聘页面上常见的标准名称，便于 Agent 匹配关键词。",
@@ -206,6 +230,12 @@ let openaiModelValue = DEFAULT_OPENAI_MODEL;
 let reasoningEffortValue = DEFAULT_REASONING_EFFORT;
 let saveTimer;
 let activeResumeParseId = "";
+let resumeProgressState = { phase: 'read', percent: 0 };
+window.addEventListener('beforeunload', (event) => {
+  if (!activeResumeParseId) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 let parsedResumeResult = null;
 
 await initialize();
@@ -337,6 +367,34 @@ function createSection(section) {
       grid.append(createField(field, path));
     }
     element.append(grid);
+  }
+  if (section.id === 'additionalNotes') {
+    const organize = document.createElement('button');
+    organize.type = 'button';
+    organize.className = 'button add-button';
+    organize.textContent = '用 Agent 整理其他信息';
+    organize.addEventListener('click', async () => {
+      if (activeResumeParseId) return;
+      const text = profile.additionalNotes.trim();
+      if (!text) { dom.saveMessage.textContent = '其他信息为空'; return; }
+      activeResumeParseId = crypto.randomUUID();
+      organize.disabled = true;
+      setResumeProgress('agent', 48, '整理其他信息', '提取论文、链接及经历，完成后预览');
+      try {
+        const config = getAgentConfig();
+        await ensureAgentHostPermission(config.baseUrl);
+        const body = await runResumeTask({ fileName: '其他信息', fileType: 'text', text, extractedCharacterCount: text.length, applicantIdentity: { fullName: profile.basic.fullName, preferredName: profile.basic.preferredName } }, config,
+          progress => setResumeProgress('agent', progress.percent, progress.title, progress.detail));
+        body.profile.additionalNotes = text;
+        parsedResumeResult = body;
+        renderResumePreview(body);
+        dom.resumeParseDialog.showModal();
+        setResumeProgress('finalize', 100, '整理完成', '检查后合并；原始其他信息会保留供核对');
+      } catch (error) {
+        setResumeProgress(resumeProgressState.phase, resumeProgressState.percent, '整理失败', error.message, true);
+      } finally { activeResumeParseId = ''; organize.disabled = false; }
+    });
+    element.append(organize);
   }
 
   return element;
@@ -545,22 +603,18 @@ async function parseResumeFile() {
     const config = getAgentConfig();
     await ensureAgentHostPermission(config.baseUrl);
     const extracted = await extractResumeFile(file, updateExtractionProgress);
-    dom.saveMessage.textContent = `已读取 ${extracted.extractedCharacterCount.toLocaleString()} 个字符，Agent 正在解析与 STAR 润色（最多 8 分钟）`;
+    dom.saveMessage.textContent = `已读取 ${extracted.extractedCharacterCount.toLocaleString()} 个字符，Agent 正在解析与 STAR 润色，请保持此页打开`;
     setResumeProgress("agent", 48, "Agent 正在识别", "分析基本信息与经历");
-    const response = await extensionApi.runtime.sendMessage({
-      type: "offerpilot:parse-resume",
-      payload: {
+    const body = await runResumeTask({
         fileName: extracted.fileName,
         fileType: extracted.fileType,
         text: extracted.text,
         extractedCharacterCount: extracted.extractedCharacterCount,
         parseId: activeResumeParseId,
-      },
-      config,
-    });
-    if (!response?.ok) throw new Error(response?.error || "简历解析失败");
+      }, config, (progress) => {
+        setResumeProgress("agent", progress.percent, progress.title, progress.detail);
+      });
     setResumeProgress("finalize", 96, "整理解析结果", "校验结构化档案");
-    const body = response.data;
     if (extracted.truncated) {
       body.warnings = [
         ...(body.warnings || []),
@@ -573,7 +627,7 @@ async function parseResumeFile() {
     dom.resumeParseDialog.showModal();
     dom.saveMessage.textContent = "解析完成，请确认后合并";
   } catch (error) {
-    setResumeProgress("finalize", 100, "解析失败", error.message, true);
+    setResumeProgress(resumeProgressState.phase, resumeProgressState.percent, "解析失败", error.message, true);
     dom.saveMessage.textContent = `解析失败：${error.message}`;
   } finally {
     activeResumeParseId = "";
@@ -602,6 +656,7 @@ function updateExtractionProgress(event) {
 
 function setResumeProgress(phase, percent, title, detail = "", failed = false) {
   const value = Math.max(0, Math.min(100, Math.round(percent)));
+  resumeProgressState = { phase, percent: value };
   dom.resumeProgress.hidden = false;
   dom.resumeProgress.dataset.state = failed ? "failed" : value === 100 ? "complete" : "active";
   dom.resumeProgressTitle.textContent = title;
@@ -613,8 +668,8 @@ function setResumeProgress(phase, percent, title, detail = "", failed = false) {
   const phases = ["read", "extract", "agent", "finalize"];
   const activeIndex = phases.indexOf(phase);
   dom.resumeProgress.querySelectorAll("[data-progress-step]").forEach((step, index) => {
-    step.classList.toggle("is-complete", index < activeIndex || value === 100);
-    step.classList.toggle("is-active", index === activeIndex && value < 100);
+    step.classList.toggle("is-complete", index < activeIndex || (!failed && value === 100));
+    step.classList.toggle("is-active", !failed && index === activeIndex && value < 100);
   });
 }
 
@@ -659,6 +714,8 @@ function renderResumePreview(result) {
         ...parsed.awards.map((item) => item.name),
       ].filter(Boolean),
     ],
+    ["论文与发表", parsed.publications.map(item => [item.title, item.venue, item.date, item.authorOrder, item.indexing, item.impactFactor ? `影响因子：${item.impactFactor}` : '', item.notes].filter(Boolean).join(' · '))],
+    ["个人链接", [parsed.basic.website, parsed.basic.github].filter(Boolean)],
     [
       "技能与证书",
       [parsed.skills.technical, parsed.skills.languages, parsed.skills.certificates]

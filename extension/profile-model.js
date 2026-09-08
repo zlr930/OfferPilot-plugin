@@ -1,3 +1,4 @@
+import { normalizePublication } from './publication-model.js';
 export const PROFILE_SCHEMA_VERSION = 1;
 
 const EMPTY_PROFILE = {
@@ -5,6 +6,8 @@ const EMPTY_PROFILE = {
   basic: {
     fullName: "",
     preferredName: "",
+    website: "",
+    github: "",
     gender: "",
     birthDate: "",
     phone: "",
@@ -31,6 +34,7 @@ const EMPTY_PROFILE = {
   projects: [],
   campus: [],
   awards: [],
+  publications: [],
   skills: {
     technical: "",
     languages: "",
@@ -41,6 +45,10 @@ const EMPTY_PROFILE = {
 };
 
 const RECORD_DEFAULTS = {
+  publications: {
+    title: "", venue: "", authors: "", applicantAuthor: "", authorOrder: "", date: "",
+    publicationType: "", indexing: "", impactFactor: "", doi: "", link: "", notes: "",
+  },
   education: {
     school: "",
     college: "",
@@ -91,6 +99,7 @@ const RECORD_DEFAULTS = {
 };
 
 const RECORD_IDENTITIES = {
+  publications: ["title"],
   education: ["school", "major", "degree"],
   internships: ["company", "role"],
   projects: ["name", "role"],
@@ -126,7 +135,7 @@ export function normalizeProfile(input) {
       const normalized = createEmptyRecord(section);
       copyStrings(normalized, record);
       normalized.id = toString(record?.id) || normalized.id;
-      return normalized;
+      return section === 'publications' ? normalizePublication(normalized) : normalized;
     });
   }
 
@@ -258,6 +267,10 @@ function hasAnyRecordValue(record) {
 }
 
 function recordsMatch(section, left, right) {
+  if (section === 'publications') {
+    const a = normalizeIdentity(left.title), b = normalizeIdentity(right.title);
+    return !!a && a === b;
+  }
   const keys = RECORD_IDENTITIES[section];
   const comparable = keys.filter(
     (key) => normalizeIdentity(left[key]) && normalizeIdentity(right[key]),
