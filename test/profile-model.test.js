@@ -21,6 +21,25 @@ test("normalizeProfile keeps known fields and drops unknown fields", () => {
   assert.equal(profile.education[0].extra, undefined);
 });
 
+test('publications and personal links survive normalization, export and merge without conflating papers',()=>{
+  const legacy=normalizeProfile({additionalNotes:'原始论文引用'});
+  assert.deepEqual(legacy.publications,[]);
+  const incoming={basic:{website:'https://example.org',github:'https://github.com/example'},publications:[
+    {title:'Paper A',venue:'Systems',indexing:'JCR Q2',date:'2022'},
+    {title:'Paper B',venue:'Systems',date:'2022'},
+  ]};
+  const merged=mergeProfile(legacy,incoming);
+  assert.equal(merged.publications.length,2);
+  assert.equal(merged.publications[0].impactFactor,'');
+  assert.equal(merged.additionalNotes,'原始论文引用');
+  const again=mergeProfile(merged,{publications:[{title:'Paper A',doi:'10.example/paper'}]});
+  assert.equal(again.publications.length,2);
+  assert.equal(again.publications[0].doi,'10.example/paper');
+  const exported=compactProfile(again);
+  assert.equal(exported.basic.website,incoming.basic.website);
+  assert.equal(exported.publications[0].indexing,'JCR Q2');
+});
+
 test("compactProfile removes blanks and editor IDs", () => {
   const profile = createEmptyProfile();
   profile.basic.fullName = "  张三  ";

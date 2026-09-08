@@ -9,7 +9,8 @@
     "url": "https://github.com/zlr930/OfferPilot-plugin.git"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
+    "test:browser": "playwright test",
     "check": "node scripts/check-project.mjs",
     "sync:vendor": "node scripts/sync-vendor.mjs",
     "build:extension": "node scripts/sync-vendor.mjs && node scripts/package-extension.mjs"
@@ -18,8 +19,15 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "antd": "^5.29.3",
+    "element-plus": "^2.14.5",
+    "esbuild": "^0.28.2",
     "jszip": "^3.10.1",
     "mammoth": "^1.12.1",
-    "pdfjs-dist": "^6.2.108"
+    "pdfjs-dist": "^6.2.108",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vue": "^3.5.42"
   }
 }

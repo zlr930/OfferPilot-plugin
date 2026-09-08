@@ -14,6 +14,34 @@ OfferPilot 是一个纯前端 Chrome 网申辅助扩展。它可以解析 PDF、
 - 识别招聘页字段并生成保守的填写计划。
 - 已有值不覆盖，敏感或低置信度字段要求人工确认。
 - 不点击提交、不同意协议、不操作招聘网站的附件上传控件。
+- 独立维护论文标题、会议/期刊、作者列表与顺序、发表时间、收录分区、影响因子、DOI 和链接；个人网站与 GitHub 也有独立字段。
+- 旧档案中混在“其他信息”的事实，可点击“用 Agent 整理其他信息”，预览后合并到论文等对应栏目；原文保留供核对。无需清空已有档案或重新上传 PDF。
+
+## 表单适配与验证
+
+填写规则位于 `extension/control-adapters.js`，执行器位于 `extension/form-engine.js`，由后台先于内容面板注入。详细控件族和参考模块见[控件能力对照](docs/control-parity.md)。
+
+- Moka、北森、ATSX、Hotjob、飞书、智联的表单结构识别基础适配。
+- Ant Design、Element、ATSX、iView、MTD、Kuma、Phoenix、Moka、飞书、智联、Brick 和 ARIA 选择控件：单选、多选、搜索、树、级联、弹窗和虚拟列表。
+- 候选项先精确匹配，未命中时通过自己的 AI 通道匹配语义等价项；不接受候选集合外的返回值。
+- 13 类日期预设：新旧 Ant、Element、iView、MTD、Kuma、Phoenix、Moka、飞书、ATSX、Brick、Fusion、MD；支持年月日、双列年月和日期区间，不补造缺失日期。
+- 写入前保护已有值，页面重新渲染后重新定位；写入后等待稳定读回并检查可见错误、原生 validity 和 aria-invalid。后续字段导致前项变化时再次核验。
+- 结果清单提供失败原因、字段定位、单项重试和重新扫描补填；有失败或未勾选建议时不执行计划中的保存动作。
+
+这些适配在本地代表性 DOM 样本中验证，尚未完成各真实站点版本的回归。私有服务端未知规则、闭合 Shadow DOM、跨域 iframe 和没有可识别结构的自定义控件仍可能需要额外适配。读回通过表示当时页面状态稳定，不代表服务器已保存；保存按钮仍可见时会停止后续动作并提示检查。
+
+运行浏览器回归：
+
+```bash
+npx playwright install chromium
+npm run test:browser
+```
+
+更新扩展后，在 Chrome 扩展管理页重新加载 OfferPilot，再刷新招聘页面。
+
+简历解析的长任务在受信任的扩展设置页直接运行同一套 Agent Harness，避免后台 Service Worker 消息通道中途关闭。解析期间保持设置页打开，不刷新或重新加载扩展；关闭页面会中断当前任务。失败进度保留在实际阶段，不显示为已完成 100%。招聘表单匹配仍由后台处理。
+
+真实组件回归使用 React / Ant Design 和 Vue / Element Plus，校验组件内部的学校 ID、多选 ID、文本、日期及区间状态。测试报告输出至 `test-results/report.json`。这些依赖只用于开发测试，不打入扩展包。线上 99% 目标的固定分母和验收方式见 [验收基准](docs/acceptance-99.md)。
 
 ## 架构
 

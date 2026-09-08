@@ -1,5 +1,7 @@
+import { normalizeRules, ruleScope } from './rule-store.js';
 import {
   createMatchPlan,
+  matchCandidateOption,
   createPageInventory,
   DEFAULT_API_BASE_URL,
   normalizeBaseUrl,
@@ -25,7 +27,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   } catch {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["content.js"],
+      files: ["control-adapters.js", "form-engine.js", "content.js"],
     });
   }
 });
@@ -38,15 +40,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   const handlers = {
+    "offerpilot:load-rules": async () => {
+      const scope = ruleScope(_sender);
+      if (!scope) return { ok: false };
+      const data = await chrome.storage.local.get(scope);
+      return { ok: true, data: normalizeRules(data[scope]) };
+    },
+    "offerpilot:save-rules": async () => {
+      const scope = ruleScope(_sender);
+      if (!scope) return { ok: false };
+      await chrome.storage.local.set({ [scope]: normalizeRules(message.rules) });
+      return { ok: true };
+    },
     "offerpilot:health": () => handleConnectionTest(message.config),
     "offerpilot:match": () => handleMatchRequest(message.payload),
+    "offerpilot:match-option": async () => {
+      try {
+        const config = await getOpenAIConfig();
+        await ensureHostPermission(config.baseUrl);
+        return { ok: true, data: await matchCandidateOption(message.payload, config) };
+      } catch (error) { return { ok: false, error: error.message }; }
+    },
     "offerpilot:inventory-page": () => handleInventoryRequest(message.payload),
     "offerpilot:parse-resume": () => handleResumeParse(message.payload, message.config),
     "offerpilot:get-profile": () => getProfile(),
   };
   const handler = handlers[message?.type];
   if (!handler) return false;
-  handler().then(sendResponse);
+  Promise.resolve().then(handler).then(sendResponse, (error) => {
+    sendResponse({ ok: false, error: error?.message || "扩展后台处理失败" });
+  });
   return true;
 });
 
